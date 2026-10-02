@@ -1,4 +1,4 @@
--- Автофарм San Diego для Xeno v45 (ИСПРАВЛЕННАЯ ВЕРСИЯ v60)
+-- Автофарм San Diego для Xeno v45 (ИСПРАВЛЕННАЯ ВЕРСИЯ v67)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
@@ -13,40 +13,38 @@ local exitCarPos         = Vector3.new(6848.5, 18.1, 29.7)
 local contrabandPos      = Vector3.new(6807.6, 18.3, 23.2)
 local carAfterContraband = Vector3.new(6848.5, 18.1, 29.7)
 local buyerCarPos        = Vector3.new(-67.09, 50.18, 463.34)
-local buyerNPCPos        = Vector3.new(-67.09, 50.18, 463.34)
-
--- ИСПРАВЛЕНО v60: точная точка для продажи
 local buyerExactPos      = Vector3.new(-69.88, 50.18, 442.83)
-
 local moneyLaunderCarPos = Vector3.new(6850.26, 18.34, -21.64)
 local moneyLaunderNPC    = Vector3.new(6808.89, 18.37, -36.05)
+
+local stopPos            = Vector3.new(-139.16, 18.15, 481.49)
 
 local noCollisionZones = {
     {pos = Vector3.new(2301.27, 18.15, 110.07), radius = 100},
     {pos = Vector3.new(-67.09, 50.18, 463.34), radius = 60},
 }
 
-local roadWaypoints = {
+local roadToStop = {
     Vector3.new(6848.5, 18.15, 29.7),
-    Vector3.new(6854.95, 18.15, 132.99),
+    Vector3.new(6856.00, 18.15, 98.42),
     Vector3.new(5500, 18.15, 100), Vector3.new(4000, 18.15, 102),
     Vector3.new(2833.06, 18.17, 104.08), Vector3.new(2936.15, 18.15, 103.31),
     Vector3.new(2500, 18.15, 103), Vector3.new(2301.27, 18.15, 110.07),
     Vector3.new(2000, 18.15, 103), Vector3.new(1000, 18.15, 103),
     Vector3.new(300, 18.15, 103),
     Vector3.new(-123.74, 18.15, 130.26),
-    Vector3.new(-139.17, 18.15, 481.70), Vector3.new(-67.09, 50.18, 463.34),
+    Vector3.new(-139.16, 18.15, 481.49),
 }
 
-local roadWaypointsToLaunder = {
-    Vector3.new(-67.09, 50.18, 463.34), Vector3.new(-139.17, 18.15, 481.70),
+local roadFromStopToLaunder = {
+    Vector3.new(-139.16, 18.15, 481.49),
     Vector3.new(-123.74, 18.15, 130.26),
     Vector3.new(300, 18.15, 103),
     Vector3.new(1000, 18.15, 103), Vector3.new(2000, 18.15, 103),
     Vector3.new(2301.27, 18.15, 110.07), Vector3.new(2500, 18.15, 103),
     Vector3.new(2936.15, 18.15, 103.31), Vector3.new(2833.06, 18.17, 104.08),
     Vector3.new(4000, 18.15, 102), Vector3.new(5500, 18.15, 100),
-    Vector3.new(6854.95, 18.15, 132.99),
+    Vector3.new(6856.00, 18.15, 98.42),
     Vector3.new(6850.26, 18.34, -21.64),
 }
 
@@ -79,20 +77,18 @@ local function generateRouteFromWaypoints(waypoints, pointsPerSegment)
     return route
 end
 
-local driveToBuyer = generateRouteFromWaypoints(roadWaypoints, 5)
-local driveToLaunder = generateRouteFromWaypoints(roadWaypointsToLaunder, 5)
+local driveToStop = generateRouteFromWaypoints(roadToStop, 5)
+local driveFromStopToLaunder = generateRouteFromWaypoints(roadFromStopToLaunder, 5)
 local driveBack = generateRouteFromWaypoints(roadWaypointsBack, 5)
 
 -- === ESP ===
 local espPoints = {}
 for _, p in ipairs(generatePoints(exitCarPos, contrabandPos, 6)) do espPoints[#espPoints + 1] = p end
 for _, p in ipairs(generatePoints(contrabandPos, carAfterContraband, 6)) do espPoints[#espPoints + 1] = p end
-for _, p in ipairs(driveToBuyer) do espPoints[#espPoints + 1] = p end
--- ИСПРАВЛЕНО v60: ESP ведёт к точной точке скупки
-for _, p in ipairs(generatePoints(buyerCarPos, buyerExactPos, 6)) do espPoints[#espPoints + 1] = p end
+for _, p in ipairs(driveToStop) do espPoints[#espPoints + 1] = p end
+espPoints[#espPoints + 1] = stopPos
 espPoints[#espPoints + 1] = buyerExactPos
-for _, p in ipairs(generatePoints(buyerExactPos, buyerCarPos, 6)) do espPoints[#espPoints + 1] = p end
-for _, p in ipairs(driveToLaunder) do espPoints[#espPoints + 1] = p end
+for _, p in ipairs(driveFromStopToLaunder) do espPoints[#espPoints + 1] = p end
 for _, p in ipairs(generatePoints(moneyLaunderCarPos, moneyLaunderNPC, 4)) do espPoints[#espPoints + 1] = p end
 for _, p in ipairs(generatePoints(moneyLaunderNPC, moneyLaunderCarPos, 4)) do espPoints[#espPoints + 1] = p end
 for _, p in ipairs(driveBack) do espPoints[#espPoints + 1] = p end
@@ -117,12 +113,11 @@ local function createESP()
     local keyPoints = {
         {pos = exitCarPos, color = Color3.fromRGB(255, 255, 0)},
         {pos = contrabandPos, color = Color3.fromRGB(255, 100, 100)},
+        {pos = stopPos, color = Color3.fromRGB(255, 165, 0)},
         {pos = buyerExactPos, color = Color3.fromRGB(100, 255, 100)},
         {pos = moneyLaunderNPC, color = Color3.fromRGB(100, 100, 255)},
     }
     for _, zone in ipairs(noCollisionZones) do table.insert(keyPoints, {pos = zone.pos, color = Color3.fromRGB(255, 165, 0)}) end
-    table.insert(keyPoints, {pos = Vector3.new(6854.95, 18.15, 132.99), color = Color3.fromRGB(0, 255, 255)})
-    table.insert(keyPoints, {pos = Vector3.new(-123.74, 18.15, 130.26), color = Color3.fromRGB(0, 255, 255)})
     for _, kp in ipairs(keyPoints) do
         local marker = Instance.new("Part")
         marker.Anchored = true; marker.CanCollide = false; marker.CanQuery = false
@@ -211,7 +206,7 @@ local function stopCar()
     if seat then pcall(function() seat.Throttle = 0; seat.Steer = 0 end) end
 end
 
--- === КОЛЛИЗИЯ v59 (без изменений) ===
+-- === КОЛЛИЗИЯ ===
 local originalCollisions = {}
 local cachedParts = {}
 local collisionEnforcerActive = false
@@ -322,8 +317,24 @@ end
 local function teleportTo(pos)
     local char, hrp = getChar()
     if not char or not hrp then return false end
-    pcall(function() char:PivotTo(CFrame.new(pos)) end)
-    task.wait(0.3)
+    for attempt = 1, 3 do
+        pcall(function() char:PivotTo(CFrame.new(pos)) end)
+        task.wait(0.4)
+        char, hrp = getChar()
+        if char and hrp then
+            local dist = (hrp.Position - pos).Magnitude
+            if dist < 10 then
+                print("[Автофарм] Телепорт успешен (попытка " .. attempt .. ")")
+                return true
+            end
+        end
+    end
+    char, hrp = getChar()
+    if char then
+        pcall(function() char:PivotTo(CFrame.new(pos)) end)
+    end
+    task.wait(0.5)
+    print("[Автофарм] Телепорт выполнен (без подтверждения)")
     return true
 end
 
@@ -334,12 +345,12 @@ local function driveThroughPoints(points, timeoutPerPoint, noCollision)
     task.wait(0.3)
 
     local dt = 0.03
-    local maxSpeed = 70
-    local boostSpeed = 80
+    local maxSpeed = 100
+    local boostSpeed = 110
     local boostDuration = 1.5
-    local minSpeed = 10
+    local minSpeed = 15
     local arriveDist = 12
-    local brakeDist = 50
+    local brakeDist = 60
 
     for i, targetPos in ipairs(points) do
         if not farming then break end
@@ -405,7 +416,7 @@ local function driveThroughPoints(points, timeoutPerPoint, noCollision)
 
                 pcall(function()
                     carPart.CFrame = carPart.CFrame + Vector3.new(0, 3, 0)
-                    carPart.AssemblyLinearVelocity = Vector3.new(toTarget.X * 100, 10, toTarget.Z * 100)
+                    carPart.AssemblyLinearVelocity = Vector3.new(toTarget.X * 120, 10, toTarget.Z * 120)
                 end)
 
                 task.wait(0.4)
@@ -451,7 +462,7 @@ local function enterCar()
     task.wait(1.5)
     if isInCar() then stopCar() return true end
 
-    if not isInCar() then pressKey("F", 0.3) task.wait(1.5) end
+    if not isInCar() then pressKey("F", 0.5) task.wait(1.5) end
     if isInCar() then stopCar() return true end
 
     print("[Автофарм] Телепорт на сиденье (запасной вариант)")
@@ -459,7 +470,7 @@ local function enterCar()
     task.wait(0.5)
     if seat.Occupant == nil then seat:Sit(hum) end
     task.wait(1.5)
-    if not isInCar() then pressKey("F", 0.3) task.wait(1.5) end
+    if not isInCar() then pressKey("F", 0.5) task.wait(1.5) end
 
     cachedSeat = getCurrentSeat()
     stopCar()
@@ -473,7 +484,7 @@ local function exitCar()
     stopCar()
     if cachedSeat and cachedSeat.Parent and cachedSeat.Occupant == hum then pcall(function() cachedSeat:Sit(nil) end) end
     task.wait(1)
-    if isInCar() then pressKey("F", 0.3) task.wait(1) end
+    if isInCar() then pressKey("F", 0.5) task.wait(1) end
     if isInCar() and cachedSeat and cachedSeat.Parent then pcall(function() cachedSeat:Sit(nil) end) task.wait(1) end
     cachedSeat = nil
     task.wait(2)
@@ -498,6 +509,25 @@ local function findProximityPromptsNear(pos, maxDist)
     return prompts
 end
 
+local function findClickDetectorsNear(pos, maxDist)
+    local detectors = {}
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") then
+            local parent = obj:FindFirstAncestorOfClass("BasePart") or obj:FindFirstAncestorOfClass("Model")
+            if parent then
+                local pPos = parent:GetPivot().Position
+                local dist = (pPos - pos).Magnitude
+                if dist < (maxDist or 20) then
+                    table.insert(detectors, {detector = obj, dist = dist})
+                end
+            end
+        end
+    end
+    table.sort(detectors, function(a, b) return a.dist < b.dist end)
+    return detectors
+end
+
+-- ИСПРАВЛЕНО v67: задержка между покупками 2 секунды (было 3)
 local function interactNPC(pos, duration, repeats)
     duration = duration or 6
     repeats = repeats or 1
@@ -511,27 +541,54 @@ local function interactNPC(pos, duration, repeats)
     end
 
     teleportTo(pos)
-    task.wait(0.3)
-
-    local prompts = findProximityPromptsNear(pos, 25)
+    task.wait(0.5)
 
     for r = 1, repeats do
         if not farming then break end
-        print("[Автофарм] Покупка " .. r .. "/" .. repeats)
+        print("[Автофарм] === Покупка " .. r .. "/" .. repeats .. " ===")
 
-        if #prompts > 0 then
-            pcall(function() fireproximityprompt(prompts[1].prompt) end)
-            print("[Автофарм] ProximityPrompt активирован")
+        local prompts = findProximityPromptsNear(pos, 30)
+        local detectors = findClickDetectorsNear(pos, 30)
+        print("[Автофарм] Найдено промптов: " .. #prompts .. ", клик-детекторов: " .. #detectors)
+
+        for _, p in ipairs(prompts) do
+            pcall(function() fireproximityprompt(p.prompt) end)
+            print("[Автофарм] fireproximityprompt -> " .. tostring(p.prompt))
+            task.wait(0.1)
         end
 
-        task.wait(2.5)
+        for _, d in ipairs(detectors) do
+            pcall(function() fireclickdetector(d.detector) end)
+            print("[Автофарм] fireclickdetector -> " .. tostring(d.detector))
+            task.wait(0.1)
+        end
 
-        char, hrp = getChar()
-        if hrp and farming then
-            local dist = (hrp.Position - pos).Magnitude
-            if dist > 3 then
+        task.wait(0.5)
+        pressKey("E", 0.1)
+        task.wait(0.3)
+        pressKey("E", 0.1)
+
+        pcall(function()
+            local VIM = game:GetService("VirtualInputManager")
+            VIM:SendKeyEvent(true, Enum.KeyCode.E, false, nil)
+            task.wait(0.1)
+            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, nil)
+            print("[Автофарм] VirtualInputManager E отправлен")
+        end)
+
+        pcall(function()
+            if mouse1click then mouse1click() print("[Автофарм] mouse1click") end
+        end)
+
+        -- ИСПРАВЛЕНО v67: задержка 2 секунды (было 3)
+        task.wait(2)
+
+        if r < repeats then
+            char, hrp = getChar()
+            if hrp and farming then
+                print("[Автофарм] Возврат на точку для следующей покупки...")
                 teleportTo(pos)
-                task.wait(0.3)
+                task.wait(0.5)
             end
         end
     end
@@ -549,11 +606,11 @@ local function farmLoop()
             task.wait(0.5)
 
             interactNPC(contrabandPos, 3, contrabandAmount)
-            task.wait(0.5)
 
+            task.wait(1)
             print("[Автофарм] Телепортация обратно к машине...")
             teleportTo(carAfterContraband)
-            task.wait(0.5)
+            task.wait(1)
 
             enterCar() task.wait(1)
             stopCar() task.wait(0.5)
@@ -561,7 +618,7 @@ local function farmLoop()
             if not isInCar() then
                 print("[Автофарм] Не удалось сесть! Повтор...")
                 teleportTo(carAfterContraband)
-                task.wait(0.5)
+                task.wait(1)
                 enterCar() task.wait(1)
                 stopCar() task.wait(0.5)
             end
@@ -572,44 +629,44 @@ local function farmLoop()
                 return
             end
 
-            -- Едем к точке скупки
-            driveThroughPoints(driveToBuyer, 30, true) task.wait(1)
+            print("[Автофарм] Едем к точке остановки перед скупщиком...")
+            driveThroughPoints(driveToStop, 30, true) task.wait(1)
 
-            -- ИСПРАВЛЕНО v60: выходим из машины
-            exitCar() task.wait(1)
+            -- ИСПРАВЛЕНО v67: пауза после выхода из машины 2.5 сек (было 1)
+            exitCar() task.wait(2.5)
 
-            -- ИСПРАВЛЕНО v60: телепорт на точную точку продажи
-            print("[Автофарм] Телепорт на точку продажи...")
+            print("[Автофарм] Телепорт к скупщику...")
             teleportTo(buyerExactPos)
             task.wait(0.5)
 
-            -- ИСПРАВЛЕНО v60: продажа
             interactNPC(buyerExactPos, 3, 1) task.wait(1)
 
-            -- ИСПРАВЛЕНО v60: возврат к машине
             print("[Автофарм] Возврат к машине...")
-            teleportTo(buyerCarPos) task.wait(0.5)
+            teleportTo(stopPos) task.wait(1)
             enterCar() task.wait(1)
             stopCar() task.wait(0.5)
 
             if not isInCar() then
-                teleportTo(buyerCarPos) task.wait(0.5)
+                teleportTo(stopPos) task.wait(1)
                 enterCar() task.wait(1)
                 stopCar() task.wait(0.5)
             end
 
             if not isInCar() then print("[Автофарм] Пропуск цикла"); task.wait(3) return end
 
-            -- ИСПРАВЛЕНО v60: едем тем же маршрутом к точке отмыва
-            driveThroughPoints(driveToLaunder, 30, true) task.wait(1)
-            exitCar() task.wait(1)
+            print("[Автофарм] Едем к отмыву...")
+            driveThroughPoints(driveFromStopToLaunder, 30, true) task.wait(1)
+
+            -- ИСПРАВЛЕНО v67: пауза после выхода из машины 2.5 сек (было 1)
+            exitCar() task.wait(2.5)
+
             interactNPC(moneyLaunderNPC, 3, 1) task.wait(1)
-            teleportTo(moneyLaunderCarPos) task.wait(0.5)
+            teleportTo(moneyLaunderCarPos) task.wait(1)
             enterCar() task.wait(1)
             stopCar() task.wait(0.5)
 
             if not isInCar() then
-                teleportTo(moneyLaunderCarPos) task.wait(0.5)
+                teleportTo(moneyLaunderCarPos) task.wait(1)
                 enterCar() task.wait(1)
                 stopCar() task.wait(0.5)
             end
@@ -658,7 +715,7 @@ local function createGUI()
     title.Size = UDim2.new(1, -40, 0, 30)
     title.Position = UDim2.new(0, 10, 0, 5)
     title.BackgroundTransparency = 1
-    title.Text = "San Diego AutoFarm v60"
+    title.Text = "San Diego AutoFarm v67"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 14
@@ -831,5 +888,5 @@ local guiOk = pcall(createGUI)
 if not guiOk then
     warn("[Автофарм] КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать GUI.")
 else
-    print("[Автофарм] Загружен v60. Нажми НАЧАТЬ ФАРМ")
+    print("[Автофарм] Загружен v67. Нажми НАЧАТЬ ФАРМ")
 end
