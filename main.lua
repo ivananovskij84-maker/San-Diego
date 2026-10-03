@@ -1,4 +1,3 @@
--- Автофарм San Diego для Xeno v45 (ИСПРАВЛЕННАЯ ВЕРСИЯ v67)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
@@ -162,18 +161,25 @@ local function getCurrentSeat()
     return nil
 end
 
-local function findNearestCar()
+local function findNearestCar(targetPos)
     local _, hrp = getChar()
     if not hrp then return nil end
+    
     local closest, closestDist
     local vehicles = Workspace:FindFirstChild("Vehicles")
     local folders = vehicles and {vehicles} or {Workspace}
+    
     for _, folder in ipairs(folders) do
         for _, v in ipairs(folder:GetDescendants()) do
-            if v:IsA("VehicleSeat") and v.Occupant == nil then
-                local dist = (v.Position - hrp.Position).Magnitude
-                if not closestDist or dist < closestDist then
-                    closest, closestDist = v, dist
+            if v:IsA("VehicleSeat") then
+                local isEmpty = (v.Occupant == nil)
+                local distToTarget = (targetPos and (v.Position - targetPos).Magnitude < 15) or true
+                
+                if isEmpty and distToTarget then
+                    local dist = (v.Position - hrp.Position).Magnitude
+                    if not closestDist or dist < closestDist then
+                        closest, closestDist = v, dist
+                    end
                 end
             end
         end
@@ -315,42 +321,44 @@ local function walkTo(targetPos, timeout)
 end
 
 local function teleportTo(pos)
+    if not farming then return false end
     local char, hrp = getChar()
     if not char or not hrp then return false end
     for attempt = 1, 3 do
+        if not farming then return false end
         pcall(function() char:PivotTo(CFrame.new(pos)) end)
-        task.wait(0.4)
+        task.wait(0.2)
         char, hrp = getChar()
         if char and hrp then
             local dist = (hrp.Position - pos).Magnitude
             if dist < 10 then
-                print("[Автофарм] Телепорт успешен (попытка " .. attempt .. ")")
                 return true
             end
         end
     end
+    if not farming then return false end
     char, hrp = getChar()
     if char then
         pcall(function() char:PivotTo(CFrame.new(pos)) end)
     end
-    task.wait(0.5)
-    print("[Автофарм] Телепорт выполнен (без подтверждения)")
+    task.wait(0.2)
     return true
 end
 
+-- ИСПРАВЛЕНО v70: скорость 220 (было 100), boost 230 (было 110)
 local function driveThroughPoints(points, timeoutPerPoint, noCollision)
     timeoutPerPoint = timeoutPerPoint or 30
     if not isInCar() then print("[Автофарм] Не в машине!") return end
     stopCar()
-    task.wait(0.3)
+    task.wait(0.2)
 
     local dt = 0.03
-    local maxSpeed = 100
-    local boostSpeed = 110
+    local maxSpeed = 220
+    local boostSpeed = 230
     local boostDuration = 1.5
     local minSpeed = 15
     local arriveDist = 12
-    local brakeDist = 60
+    local brakeDist = 80
 
     for i, targetPos in ipairs(points) do
         if not farming then break end
@@ -419,7 +427,7 @@ local function driveThroughPoints(points, timeoutPerPoint, noCollision)
                     carPart.AssemblyLinearVelocity = Vector3.new(toTarget.X * 120, 10, toTarget.Z * 120)
                 end)
 
-                task.wait(0.4)
+                task.wait(0.2)
                 stuckTime = 0; lastPos = nil
                 pointStartTime = tick()
                 boostActive = true
@@ -444,37 +452,7 @@ local function driveThroughPoints(points, timeoutPerPoint, noCollision)
     end
 
     stopCar()
-    task.wait(0.3)
-end
-
-local function enterCar()
-    local char, hrp, hum = getChar()
-    if not hrp or not hum then return false end
-    if isInCar() then return true end
-    local seat = findNearestCar()
-    if not seat then print("[Автофарм] Машина не найдена!") return false end
-
-    walkTo(seat.Position, 15)
-    task.wait(0.5)
-    if isInCar() then stopCar() return true end
-
-    if seat.Occupant == nil then seat:Sit(hum) end
-    task.wait(1.5)
-    if isInCar() then stopCar() return true end
-
-    if not isInCar() then pressKey("F", 0.5) task.wait(1.5) end
-    if isInCar() then stopCar() return true end
-
-    print("[Автофарм] Телепорт на сиденье (запасной вариант)")
-    pcall(function() char:PivotTo(CFrame.new(seat.Position + Vector3.new(0, 3, 0))) end)
-    task.wait(0.5)
-    if seat.Occupant == nil then seat:Sit(hum) end
-    task.wait(1.5)
-    if not isInCar() then pressKey("F", 0.5) task.wait(1.5) end
-
-    cachedSeat = getCurrentSeat()
-    stopCar()
-    return isInCar()
+    task.wait(0.2)
 end
 
 local function exitCar()
@@ -482,13 +460,89 @@ local function exitCar()
     if not hum then return false end
     if not isInCar() then return true end
     stopCar()
-    if cachedSeat and cachedSeat.Parent and cachedSeat.Occupant == hum then pcall(function() cachedSeat:Sit(nil) end) end
-    task.wait(1)
-    if isInCar() then pressKey("F", 0.5) task.wait(1) end
-    if isInCar() and cachedSeat and cachedSeat.Parent then pcall(function() cachedSeat:Sit(nil) end) task.wait(1) end
+    
+    if cachedSeat and cachedSeat.Parent and cachedSeat.Occupant == hum then 
+        pcall(function() cachedSeat:Sit(nil) end) 
+    end
+    
+    task.wait(0.2)
+    
+    if isInCar() then 
+        pressKey("F", 0.2) 
+        task.wait(0.2)
+    end
+    
+    if isInCar() and cachedSeat and cachedSeat.Parent then 
+        pcall(function() cachedSeat:Sit(nil) end) 
+        task.wait(0.2)
+    end
+    
     cachedSeat = nil
-    task.wait(2)
+    task.wait(0.2)
     return not isInCar()
+end
+
+local function enterCar(targetPos)
+    local char, hrp, hum = getChar()
+    if not hrp or not hum then return false end
+    if isInCar() then return true end
+    
+    local seat = findNearestCar(targetPos)
+    
+    if not seat then 
+        print("[Автофарм] Машина не найдена рядом с точкой!") 
+        return false 
+    end
+
+    walkTo(seat.Position, 15)
+    task.wait(0.2)
+    
+    if isInCar() then 
+        stopCar() 
+        return true 
+    end
+
+    if seat.Occupant == nil then seat:Sit(hum) end
+    task.wait(0.3)
+    
+    if isInCar() then 
+        stopCar() 
+        return true 
+    end
+
+    local currentSeat = getCurrentSeat()
+    if currentSeat and currentSeat ~= seat then
+        print("[Автофарм] Сели не в ту машину! Выходим и пробуем снова.")
+        exitCar()
+        task.wait(0.3)
+        return enterCar(targetPos)
+    end
+
+    if not isInCar() then 
+        pressKey("F", 0.2) 
+        task.wait(0.3) 
+    end
+    
+    if isInCar() then 
+        stopCar() 
+        return true 
+    end
+
+    print("[Автофарм] Телепорт на сиденье (запасной вариант)")
+    pcall(function() char:PivotTo(CFrame.new(seat.Position + Vector3.new(0, 3, 0))) end)
+    task.wait(0.2)
+    
+    if seat.Occupant == nil then seat:Sit(hum) end
+    task.wait(0.3)
+    
+    if not isInCar() then 
+        pressKey("F", 0.2) 
+        task.wait(0.3) 
+    end
+
+    cachedSeat = getCurrentSeat()
+    stopCar()
+    return isInCar()
 end
 
 local function findProximityPromptsNear(pos, maxDist)
@@ -527,7 +581,8 @@ local function findClickDetectorsNear(pos, maxDist)
     return detectors
 end
 
--- ИСПРАВЛЕНО v67: задержка между покупками 2 секунды (было 3)
+-- ИСПРАВЛЕНО v71: промпты ищутся ПЕРЕД КАЖДОЙ покупкой (не один раз)
+-- задержка 0.1 сек между покупками (100 мс — сервер успевает обработать)
 local function interactNPC(pos, duration, repeats)
     duration = duration or 6
     repeats = repeats or 1
@@ -537,60 +592,32 @@ local function interactNPC(pos, duration, repeats)
     local currentDist = (hrp.Position - pos).Magnitude
     if currentDist > 5 then
         walkTo(pos, 15)
-        task.wait(0.3)
+        task.wait(0.1)
     end
 
     teleportTo(pos)
-    task.wait(0.5)
+    task.wait(0.15)
 
     for r = 1, repeats do
         if not farming then break end
         print("[Автофарм] === Покупка " .. r .. "/" .. repeats .. " ===")
 
-        local prompts = findProximityPromptsNear(pos, 30)
-        local detectors = findClickDetectorsNear(pos, 30)
-        print("[Автофарм] Найдено промптов: " .. #prompts .. ", клик-детекторов: " .. #detectors)
+        -- ИСПРАВЛЕНО v71: ищем промпты ПЕРЕД КАЖДОЙ покупкой
+        -- (промпт может перезагрузиться после предыдущей покупки)
+        local prompts = findProximityPromptsNear(pos, 10)
 
-        for _, p in ipairs(prompts) do
-            pcall(function() fireproximityprompt(p.prompt) end)
-            print("[Автофарм] fireproximityprompt -> " .. tostring(p.prompt))
-            task.wait(0.1)
+        if #prompts > 0 then
+            pcall(function() fireproximityprompt(prompts[1].prompt) end)
+            print("[Автофарм] fireproximityprompt -> " .. tostring(prompts[1].prompt))
+        else
+            -- ИСПРАВЛЕНО v71: если промпта нет — пробуем E
+            print("[Автофарм] Промпт не найден, пробуем E")
+            pressKey("E", 0.05)
         end
 
-        for _, d in ipairs(detectors) do
-            pcall(function() fireclickdetector(d.detector) end)
-            print("[Автофарм] fireclickdetector -> " .. tostring(d.detector))
-            task.wait(0.1)
-        end
-
-        task.wait(0.5)
-        pressKey("E", 0.1)
-        task.wait(0.3)
-        pressKey("E", 0.1)
-
-        pcall(function()
-            local VIM = game:GetService("VirtualInputManager")
-            VIM:SendKeyEvent(true, Enum.KeyCode.E, false, nil)
-            task.wait(0.1)
-            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, nil)
-            print("[Автофарм] VirtualInputManager E отправлен")
-        end)
-
-        pcall(function()
-            if mouse1click then mouse1click() print("[Автофарм] mouse1click") end
-        end)
-
-        -- ИСПРАВЛЕНО v67: задержка 2 секунды (было 3)
-        task.wait(2)
-
-        if r < repeats then
-            char, hrp = getChar()
-            if hrp and farming then
-                print("[Автофарм] Возврат на точку для следующей покупки...")
-                teleportTo(pos)
-                task.wait(0.5)
-            end
-        end
+        -- ИСПРАВЛЕНО v71: задержка 0.1 сек (100 мс)
+        -- достаточно для обработки сервером, но не долго
+        task.wait(0.1)
     end
 end
 
@@ -598,87 +625,158 @@ end
 local function farmLoop()
     while farming do
         local ok, err = pcall(function()
-            if isInCar() then driveThroughPoints({exitCarPos}, 90, true) task.wait(1) end
-            exitCar() task.wait(1)
+            if not farming then return end
 
+            if isInCar() then 
+                driveThroughPoints({exitCarPos}, 90, true) 
+                task.wait(0.2)
+            end
+
+            if not farming then return end
+            exitCar() 
+            task.wait(0.2)
+
+            if not farming then return end
             print("[Автофарм] Телепортация к контрабанде...")
             teleportTo(contrabandPos)
-            task.wait(0.5)
+            task.wait(0.15)
 
+            if not farming then return end
             interactNPC(contrabandPos, 3, contrabandAmount)
 
-            task.wait(1)
+            if not farming then return end
+            task.wait(0.1)
             print("[Автофарм] Телепортация обратно к машине...")
             teleportTo(carAfterContraband)
-            task.wait(1)
+            task.wait(0.1)
 
-            enterCar() task.wait(1)
-            stopCar() task.wait(0.5)
+            if not farming then return end
+            enterCar(carAfterContraband)
+            task.wait(0.1)
+            stopCar() 
+            task.wait(0.1)
 
+            if not farming then return end
             if not isInCar() then
                 print("[Автофарм] Не удалось сесть! Повтор...")
                 teleportTo(carAfterContraband)
-                task.wait(1)
-                enterCar() task.wait(1)
-                stopCar() task.wait(0.5)
+                task.wait(0.1)
+                if not farming then return end
+                enterCar(carAfterContraband) 
+                task.wait(0.1)
+                stopCar() 
+                task.wait(0.1)
             end
 
             if not isInCar() then
                 print("[Автофарм] Пропуск цикла — не в машине")
-                task.wait(3)
+                task.wait(1)
                 return
             end
 
+            if not farming then return end
             print("[Автофарм] Едем к точке остановки перед скупщиком...")
-            driveThroughPoints(driveToStop, 30, true) task.wait(1)
+            driveThroughPoints(driveToStop, 30, true) 
+            task.wait(0.1)
 
-            -- ИСПРАВЛЕНО v67: пауза после выхода из машины 2.5 сек (было 1)
-            exitCar() task.wait(2.5)
+            if not farming then return end
+            exitCar() 
+            task.wait(0.1)
 
+            if not farming then return end
             print("[Автофарм] Телепорт к скупщику...")
             teleportTo(buyerExactPos)
-            task.wait(0.5)
+            task.wait(0.15)
 
-            interactNPC(buyerExactPos, 3, 1) task.wait(1)
+            if not farming then return end
+            interactNPC(buyerExactPos, 3, 1) 
+            task.wait(0.1)
 
+            if not farming then return end
             print("[Автофарм] Возврат к машине...")
-            teleportTo(stopPos) task.wait(1)
-            enterCar() task.wait(1)
-            stopCar() task.wait(0.5)
+            teleportTo(stopPos) 
+            task.wait(0.1)
+            
+            if not farming then return end
+            enterCar(stopPos)
+            task.wait(0.1)
+            stopCar() 
+            task.wait(0.1)
 
+            if not farming then return end
             if not isInCar() then
-                teleportTo(stopPos) task.wait(1)
-                enterCar() task.wait(1)
-                stopCar() task.wait(0.5)
+                teleportTo(stopPos) 
+                task.wait(0.1)
+                if not farming then return end
+                enterCar(stopPos) 
+                task.wait(0.1)
+                stopCar() 
+                task.wait(0.1)
             end
 
-            if not isInCar() then print("[Автофарм] Пропуск цикла"); task.wait(3) return end
+            if not isInCar() then 
+                print("[Автофарм] Пропуск цикла"); 
+                task.wait(1) 
+                return 
+            end
 
+            if not farming then return end
             print("[Автофарм] Едем к отмыву...")
-            driveThroughPoints(driveFromStopToLaunder, 30, true) task.wait(1)
+            driveThroughPoints(driveFromStopToLaunder, 30, true) 
+            task.wait(0.1)
 
-            -- ИСПРАВЛЕНО v67: пауза после выхода из машины 2.5 сек (было 1)
-            exitCar() task.wait(2.5)
+            if not farming then return end
+            exitCar() 
+            task.wait(0.3)  -- ИСПРАВЛЕНО v71: чуть больше времени на выход
 
-            interactNPC(moneyLaunderNPC, 3, 1) task.wait(1)
-            teleportTo(moneyLaunderCarPos) task.wait(1)
-            enterCar() task.wait(1)
-            stopCar() task.wait(0.5)
+            -- ИСПРАВЛЕНО v71: ЯВНЫЙ телепорт к отмыву после выхода из машины
+            if not farming then return end
+            print("[Автофарм] Телепорт к отмыву денег...")
+            teleportTo(moneyLaunderNPC)
+            task.wait(0.3)  -- ИСПРАВЛЕНО v71: дать время на загрузку позиции
 
+            if not farming then return end
+            interactNPC(moneyLaunderNPC, 3, 1) 
+            task.wait(0.3)  -- ИСПРАВЛЕНО v71: дать время на обработку отмыва
+
+            -- ИСПРАВЛЕНО v71: ЯВНЫЙ телепорт обратно к машине
+            if not farming then return end
+            print("[Автофарм] Телепорт обратно к машине после отмыва...")
+            teleportTo(moneyLaunderCarPos) 
+            task.wait(0.3)  -- ИСПРАВЛЕНО v71: дать время на загрузку позиции
+
+            if not farming then return end
+            enterCar(moneyLaunderCarPos)
+            task.wait(0.1)
+            stopCar() 
+            task.wait(0.1)
+
+            if not farming then return end
             if not isInCar() then
-                teleportTo(moneyLaunderCarPos) task.wait(1)
-                enterCar() task.wait(1)
-                stopCar() task.wait(0.5)
+                teleportTo(moneyLaunderCarPos) 
+                task.wait(0.1)
+                if not farming then return end
+                enterCar(moneyLaunderCarPos) 
+                task.wait(0.1)
+                stopCar() 
+                task.wait(0.1)
             end
 
-            if not isInCar() then print("[Автофарм] Пропуск цикла"); task.wait(3) return end
+            if not isInCar() then 
+                print("[Автофарм] Пропуск цикла"); 
+                task.wait(1) 
+                return 
+            end
 
-            driveThroughPoints(driveBack, 30, true) task.wait(1)
+            if not farming then return end
+            driveThroughPoints(driveBack, 30, true) 
+            task.wait(0.1)
         end)
+        
         if not ok then
             print("[Автофарм] ОШИБКА: " .. tostring(err))
             stopCar()
-            task.wait(3)
+            task.wait(1)
         end
     end
     stopCollisionEnforcer()
@@ -715,7 +813,7 @@ local function createGUI()
     title.Size = UDim2.new(1, -40, 0, 30)
     title.Position = UDim2.new(0, 10, 0, 5)
     title.BackgroundTransparency = 1
-    title.Text = "San Diego AutoFarm v67"
+    title.Text = "San Diego AutoFarm v71"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 14
@@ -865,6 +963,7 @@ local function createGUI()
             farming = false
             stopCar()
             stopCollisionEnforcer()
+            removeESP()
             statusLabel.Text = "Статус: ОСТАНОВЛЕН"
             statusLabel.TextColor3 = Color3.fromRGB(200, 100, 100)
             toggleBtn.Text = "НАЧАТЬ ФАРМ"
@@ -888,5 +987,5 @@ local guiOk = pcall(createGUI)
 if not guiOk then
     warn("[Автофарм] КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать GUI.")
 else
-    print("[Автофарм] Загружен v67. Нажми НАЧАТЬ ФАРМ")
+    print("[Автофарм] Загружен v71. Нажми НАЧАТЬ ФАРМ")
 end
