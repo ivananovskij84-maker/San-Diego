@@ -135,7 +135,11 @@ end
 local hexCodes = { E = 0x45, F = 0x46, Space = 0x20 }
 local function rawPress(code) pcall(function() if keypress then keypress(code) end end) end
 local function rawRelease(code) pcall(function() if keyrelease then keyrelease(code) end end) end
-local function pressKey(letter, holdTime) rawPress(hexCodes[letter]) task.wait(holdTime or 0.1) rawRelease(hexCodes[letter]) end
+local function pressKey(letter, holdTime)
+    rawPress(hexCodes[letter])
+    task.wait(holdTime or 0.1)
+    rawRelease(hexCodes[letter])
+end
 
 -- === УТИЛИТЫ ПЕРСОНАЖА ===
 local function getChar()
@@ -345,7 +349,6 @@ local function teleportTo(pos)
     return true
 end
 
--- ИСПРАВЛЕНО v70: скорость 220 (было 100), boost 230 (было 110)
 local function driveThroughPoints(points, timeoutPerPoint, noCollision)
     timeoutPerPoint = timeoutPerPoint or 30
     if not isInCar() then print("[Автофарм] Не в машине!") return end
@@ -553,7 +556,7 @@ local function findProximityPromptsNear(pos, maxDist)
             if parent then
                 local pPos = parent:GetPivot().Position
                 local dist = (pPos - pos).Magnitude
-                if dist < (maxDist or 20) then
+                if dist < (maxDist or 25) then
                     table.insert(prompts, {prompt = obj, dist = dist})
                 end
             end
@@ -571,7 +574,7 @@ local function findClickDetectorsNear(pos, maxDist)
             if parent then
                 local pPos = parent:GetPivot().Position
                 local dist = (pPos - pos).Magnitude
-                if dist < (maxDist or 20) then
+                if dist < (maxDist or 25) then
                     table.insert(detectors, {detector = obj, dist = dist})
                 end
             end
@@ -581,43 +584,105 @@ local function findClickDetectorsNear(pos, maxDist)
     return detectors
 end
 
--- ИСПРАВЛЕНО v71: промпты ищутся ПЕРЕД КАЖДОЙ покупкой (не один раз)
--- задержка 0.1 сек между покупками (100 мс — сервер успевает обработать)
+-- === УЛУЧШЕННОЕ ВЗАИМОДЕЙСТВИЕ (ФИКС ЗАКУПКИ И УДЕРЖАНИЯ КЛАВИШИ) ===
+local function triggerPromptReliable(prompt, holdDurationFallback)
+    if not prompt then return false end
+    
+    -- Обход ограничений дистанции и преград
+    pcall(function()
+        prompt.RequiresLineOfSight = false
+        prompt.MaxActivationDistance = 35
+    end)
+
+    -- Попытка через нативный fireproximityprompt
+    local fired = false
+    if fireproximityprompt then
+        pcall(function()
+            local origHold = prompt.HoldDuration
+            prompt.HoldDuration = 0
+            fireproximityprompt(prompt)
+            task.wait(0.05)
+            prompt.HoldDuration = origHold
+            fired = true
+        end)
+    end
+
+    -- Если нативная функция не сработала или не обошла удержание
+    if not fired or prompt.HoldDuration > 0 then
+        pcall(function()
+            prompt:InputHoldBegin()
+            task.wait(math.clamp(prompt.HoldDuration, 0.1, holdDurationFallback or 1.5))
+            prompt:InputHoldEnd()
+        end)
+    end
+    return true
+end
+
 local function interactNPC(pos, duration, repeats)
-    duration = duration or 6
+    duration = duration or 3
     repeats = repeats or 1
-    local char, hrp = getChar()
-    if not hrp then return end
+    local char, hrp, hum = getChar()
+    if not hrp or not hum then return end
 
     local currentDist = (hrp.Position - pos).Magnitude
     if currentDist > 5 then
-        walkTo(pos, 15)
+        walkTo(pos, 10)
         task.wait(0.1)
     end
 
     teleportTo(pos)
-    task.wait(0.15)
+    task.wait(0.2)
 
     for r = 1, repeats do
         if not farming then break end
-        print("[Автофарм] === Покупка " .. r .. "/" .. repeats .. " ===")
+        print("[Автофарм] === Взаимодействие " .. r .. "/" .. repeats .. " ===")
 
-        -- ИСПРАВЛЕНО v71: ищем промпты ПЕРЕД КАЖДОЙ покупкой
-        -- (промпт может перезагрузиться после предыдущей покупки)
-        local prompts = findProximityPromptsNear(pos, 10)
+        local prompts = findProximityPromptsNear(pos, 25)
+        local triggered = false
 
         if #prompts > 0 then
-            pcall(function() fireproximityprompt(prompts[1].prompt) end)
-            print("[Автофарм] fireproximityprompt -> " .. tostring(prompts[1].prompt))
+            local targetPrompt = prompts[1].prompt
+            print("[Автофарм] Активация ProximityPrompt: " .. tostring(targetPrompt))
+            triggerPromptReliable(targetPrompt, duration)
+            triggered = true
+            task.wait(0.3)
         else
-            -- ИСПРАВЛЕНО v71: если промпта нет — пробуем E
-            print("[Автофарм] Промпт не найден, пробуем E")
-            pressKey("E", 0.05)
+            -- Проверяем ClickDetector
+            local detectors = findClickDetectorsNear(pos, 25)
+            if #detectors > 0 and fireclickdetector then
+                print("[Автофарм] Активация ClickDetector")
+                pcall(function() fireclickdetector(detectors[1].detector) end)
+                triggered = true
+                task.wait(0.3)
+            end
         end
 
-        -- ИСПРАВЛЕНО v71: задержка 0.1 сек (100 мс)
-        -- достаточно для обработки сервером, но не долго
-        task.wait(0.1)
+        -- Запасной вариант: физическое зажатие клавиши 'E' персонажем
+        if not triggered then
+            print("[Автофарм] Промпт не обнаружен, симуляция удержания 'E'...")
+            local oldWalkSpeed = hum.WalkSpeed
+            hum.WalkSpeed = 16
+
+            local targetWalk = pos - (hrp.CFrame.LookVector * 1.5)
+            hum:MoveTo(targetWalk)
+            task.wait(0.3)
+
+            -- Зажимаем E на время duration
+            rawPress(hexCodes.E)
+            task.wait(duration)
+            rawRelease(hexCodes.E)
+
+            hum.WalkSpeed = oldWalkSpeed
+        else
+            -- Если сработал промпт, но на сервере стоит анти-спам, дублируем физическое нажатие
+            pressKey("E", 0.3)
+        end
+
+        if pos == moneyLaunderNPC then
+            task.wait(1.2)
+        else
+            task.wait(0.3)
+        end
     end
 end
 
@@ -642,7 +707,7 @@ local function farmLoop()
             task.wait(0.15)
 
             if not farming then return end
-            interactNPC(contrabandPos, 3, contrabandAmount)
+            interactNPC(contrabandPos, 2.5, contrabandAmount)
 
             if not farming then return end
             task.wait(0.1)
@@ -689,7 +754,7 @@ local function farmLoop()
             task.wait(0.15)
 
             if not farming then return end
-            interactNPC(buyerExactPos, 3, 1) 
+            interactNPC(buyerExactPos, 2, 1) 
             task.wait(0.1)
 
             if not farming then return end
@@ -727,23 +792,21 @@ local function farmLoop()
 
             if not farming then return end
             exitCar() 
-            task.wait(0.3)  -- ИСПРАВЛЕНО v71: чуть больше времени на выход
+            task.wait(0.3)
 
-            -- ИСПРАВЛЕНО v71: ЯВНЫЙ телепорт к отмыву после выхода из машины
             if not farming then return end
             print("[Автофарм] Телепорт к отмыву денег...")
             teleportTo(moneyLaunderNPC)
-            task.wait(0.3)  -- ИСПРАВЛЕНО v71: дать время на загрузку позиции
+            task.wait(0.3)
 
             if not farming then return end
-            interactNPC(moneyLaunderNPC, 3, 1) 
-            task.wait(0.3)  -- ИСПРАВЛЕНО v71: дать время на обработку отмыва
+            interactNPC(moneyLaunderNPC, 2.5, 1) 
+            task.wait(0.3)
 
-            -- ИСПРАВЛЕНО v71: ЯВНЫЙ телепорт обратно к машине
             if not farming then return end
             print("[Автофарм] Телепорт обратно к машине после отмыва...")
             teleportTo(moneyLaunderCarPos) 
-            task.wait(0.3)  -- ИСПРАВЛЕНО v71: дать время на загрузку позиции
+            task.wait(0.3)
 
             if not farming then return end
             enterCar(moneyLaunderCarPos)
@@ -813,7 +876,7 @@ local function createGUI()
     title.Size = UDim2.new(1, -40, 0, 30)
     title.Position = UDim2.new(0, 10, 0, 5)
     title.BackgroundTransparency = 1
-    title.Text = "San Diego AutoFarm v71"
+    title.Text = "San Diego AutoFarm v72"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 14
@@ -987,5 +1050,5 @@ local guiOk = pcall(createGUI)
 if not guiOk then
     warn("[Автофарм] КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать GUI.")
 else
-    print("[Автофарм] Загружен v71. Нажми НАЧАТЬ ФАРМ")
+    print("[Автофарм] Загружен v72. Нажми НАЧАТЬ ФАРМ")
 end
